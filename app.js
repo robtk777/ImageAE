@@ -13,14 +13,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     const latentCanvas = document.getElementById('latent-canvas');
     const previewPlaceholder = document.getElementById('preview-placeholder');
 
+    // Batch UI Elements
+    const encoderBatchPanel = document.getElementById('encoder-batch-panel');
+    const decoderBatchPanel = document.getElementById('decoder-batch-panel');
+    const encoderFileList = document.getElementById('encoder-file-list');
+    const decoderFileList = document.getElementById('decoder-file-list');
+    const encoderCount = document.getElementById('encoder-count');
+    const decoderCount = document.getElementById('decoder-count');
+
     // UI Elements for Stats
     const origPixelsEl = document.getElementById('orig-pixels');
     const latentPixelsEl = document.getElementById('latent-pixels');
     const dataKeptEl = document.getElementById('data-kept');
     const btTimeEl = document.getElementById('bt-transfer-time');
 
-    let currentFeatBuffer = null;
-    let currentFeatName = 'image.feat';
+    let currentResults = []; // Stores current batch results
+    let currentFeatName = 'batch'; 
+    let isProcessing = false;
 
     // TF.jsの初期化待ち
     try {
@@ -31,9 +40,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error(e);
     }
 
-    // --- Drag & Drop Setup ---
+    // --- Utility Functions ---
 
-    const setupDropZone = (zone, onFile) => {
+    const setupDropZone = (zone, onFiles) => {
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
             zone.addEventListener(evt, (e) => {
                 e.preventDefault();
@@ -45,187 +54,187 @@ document.addEventListener('DOMContentLoaded', async () => {
         zone.addEventListener('dragleave', () => zone.classList.remove('active'));
         zone.addEventListener('drop', (e) => {
             zone.classList.remove('active');
-            const file = e.dataTransfer.files[0];
-            if (file) onFile(file);
+            const files = Array.from(e.dataTransfer.files);
+            if (files.length > 0) onFiles(files);
         });
     };
 
-    // Encoder: Image Drop
-    setupDropZone(imageDropZone, async (file) => {
-        if (!file.type.startsWith('image/')) return alert('画像ファイルを選択してください');
-
-        const originalSize = file.size;
-        origSizeEl.innerText = `${(originalSize / 1024).toFixed(1)} KB`;
-
-        const img = new Image();
-        img.src = URL.createObjectURL(file);
-        img.onload = async () => {
-            loadingOverlay.classList.remove('hidden');
-            document.getElementById('loading-text').innerText = '特徴量を抽出中 (Encoding)...';
-
-            try {
-                const buffer = await codec.encode(img);
-                currentFeatBuffer = buffer;
-                currentFeatName = file.name.split('.')[0] + '.feat';
-                
-                const latentSize = buffer.byteLength;
-                latentSizeEl.innerText = `${(latentSize / 1024).toFixed(1)} KB`;
-                
-                const ratio = (latentSize / originalSize) * 100;
-                ratioEl.innerText = `${ratio.toFixed(1)} %`;
-                
-                downloadBtn.disabled = false;
-                downloadBtn.innerText = '特徴量ファイルを保存';
-            } catch (err) {
-                alert('エンコードに失敗しました: ' + err.message);
-            } finally {
-                loadingOverlay.classList.add('hidden');
-            }
-        };
-    });
-
-    // Decoder: Feat Drop
-    setupDropZone(featDropZone, async (file) => {
-        if (!file.name.endsWith('.feat')) return alert('.featファイルを選択してください');
-
-        loadingOverlay.classList.remove('hidden');
-        document.getElementById('loading-text').innerText = '画像を復元中 (Decoding)...';
-
-        try {
-            const buffer = await file.arrayBuffer();
-            const { width, height } = await codec.decode(buffer, outputCanvas);
-            
-            previewPlaceholder.classList.add('hidden');
-            
-            // Bluetooth推定時間の更新
-            const btSeconds = codec.estimateTransferTime(buffer.byteLength);
-            btTimeEl.innerText = `${btSeconds} 秒`;
-            
-        } catch (err) {
-            alert('デコードに失敗しました。ファイル形式が正しくない可能性があります。');
-        } finally {
-            loadingOverlay.classList.add('hidden');
-        }
-    });
-
-    // Download Handler
-    downloadBtn.addEventListener('click', () => {
-        if (!currentFeatBuffer) return;
-        const blob = new Blob([currentFeatBuffer], { type: 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = currentFeatName;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-
-    // Download Output Image Handler
-    downloadOutputBtn.addEventListener('click', () => {
-        const quality = 0.92;
-        const dataUrl = outputCanvas.toDataURL('image/jpeg', quality);
-        const a = document.createElement('a');
-        a.href = dataUrl;
-        a.download = 'reconstructed_' + currentFeatName.replace('.feat', '.jpg');
-        a.click();
-    });
-
-    // Click to select file fallback
-    const triggerFileInput = (accept, onFile) => {
+    const triggerFileInput = (accept, onFiles) => {
         const input = document.createElement('input');
         input.type = 'file';
+        input.multiple = true;
         input.accept = accept;
         input.onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) onFile(file);
+            const files = Array.from(e.target.files);
+            if (files.length > 0) onFiles(files);
         };
         input.click();
     };
 
-    imageDropZone.addEventListener('click', () => {
-        triggerFileInput('image/*', (file) => {
-            // Dropイベントと同様の処理を手動で呼び出し
-            const dropEvent = { dataTransfer: { files: [file] }, preventDefault: () => {}, stopPropagation: () => {} };
-            // 実際には直接処理関数を呼ぶのがクリーン
-        });
-        // 直接ハンドラを共通化
-    });
+    const createListElement = (filename) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${filename}</span><span class="status pending">待機中</span>`;
+        return li;
+    };
 
-    // 共通処理関数の抽出
-    async function handleImageFile(file) {
-        if (!file.type.startsWith('image/')) return alert('画像ファイルを選択してください');
+    const updateListStatus = (li, status, text) => {
+        const statusEl = li.querySelector('.status');
+        statusEl.className = `status ${status}`;
+        statusEl.innerText = text;
+    };
 
-        const img = new Image();
-        img.src = URL.createObjectURL(file);
-        img.onload = async () => {
-            loadingOverlay.classList.remove('hidden');
-            document.getElementById('loading-text').innerText = '特徴量を抽出中 (Encoding)...';
+    // --- Batch Handlers ---
+
+    async function handleImages(files) {
+        if (isProcessing) return;
+        const imageFiles = files.filter(f => f.type.startsWith('image/'));
+        if (imageFiles.length === 0) return alert('画像ファイルが見つかりません');
+
+        isProcessing = true;
+        encoderBatchPanel.classList.remove('hidden');
+        encoderFileList.innerHTML = '';
+        currentResults = [];
+        downloadBtn.disabled = true;
+
+        for (let i = 0; i < imageFiles.length; i++) {
+            const file = imageFiles[i];
+            const li = createListElement(file.name);
+            encoderFileList.appendChild(li);
+            encoderCount.innerText = `${i + 1} / ${imageFiles.length}`;
+            updateListStatus(li, 'ongoing', '処理中...');
 
             try {
+                const img = await loadImage(file);
                 const result = await codec.encode(img);
-                const { buffer, latentTensor, latentWidth, latentHeight, originalPixels, latentPixels } = result;
-
-                currentFeatBuffer = buffer;
-                currentFeatName = file.name.split('.')[0] + '.feat';
                 
-                // 統計の更新
-                origPixelsEl.innerText = `${originalPixels.toLocaleString()} px`;
-                latentPixelsEl.innerText = `${latentPixels.toLocaleString()} px`;
-                const keptRatio = (latentPixels / originalPixels) * 100;
-                dataKeptEl.innerText = `${keptRatio.toFixed(2)} %`;
+                // 最後の1枚をプレビュー表示
+                if (i === imageFiles.length - 1) {
+                    updateStatsDisplay(result, img);
+                    await renderLatent(result.latentTensor);
+                } else {
+                    result.latentTensor.dispose();
+                }
 
-                // 特徴量マップの可視化
-                latentCanvas.width = latentWidth;
-                latentCanvas.height = latentHeight;
-                await tf.browser.toPixels(latentTensor, latentCanvas);
-                latentTensor.dispose(); // 描画後に破棄
-                
-                downloadBtn.disabled = false;
-                downloadBtn.innerText = '特徴量ファイルを保存';
+                currentResults.push({ name: file.name.split('.')[0] + '.feat', data: result.buffer });
+                updateListStatus(li, 'done', '完了');
             } catch (err) {
-                alert('エンコードに失敗しました: ' + err.message);
                 console.error(err);
-            } finally {
-                loadingOverlay.classList.add('hidden');
+                updateListStatus(li, 'error', 'エラー');
             }
-        };
+        }
+        downloadBtn.disabled = false;
+        downloadBtn.innerText = imageFiles.length > 1 ? '一括保存 (ZIP)' : '特徴量ファイルを保存';
+        isProcessing = false;
     }
 
-    async function handleFeatFile(file) {
-        if (!file.name.endsWith('.feat')) return alert('.featファイルを選択してください');
+    async function handleFeats(files) {
+        if (isProcessing) return;
+        const featFiles = files.filter(f => f.name.endsWith('.feat'));
+        if (featFiles.length === 0) return alert('.featファイルが見つかりません');
 
-        loadingOverlay.classList.remove('hidden');
-        document.getElementById('loading-text').innerText = '画像を復元中 (Decoding)...';
+        isProcessing = true;
+        decoderBatchPanel.classList.remove('hidden');
+        decoderFileList.innerHTML = '';
+        currentResults = [];
+        downloadOutputBtn.disabled = true;
 
-        try {
-            const buffer = await file.arrayBuffer();
-            const { width, height } = await codec.decode(buffer, outputCanvas);
-            
-            previewPlaceholder.classList.add('hidden');
-            
-            const btSeconds = codec.estimateTransferTime(buffer.byteLength);
-            btTimeEl.innerText = `${btSeconds} 秒`;
+        for (let i = 0; i < featFiles.length; i++) {
+            const file = featFiles[i];
+            const li = createListElement(file.name);
+            decoderFileList.appendChild(li);
+            decoderCount.innerText = `${i + 1} / ${featFiles.length}`;
+            updateListStatus(li, 'ongoing', '復元中...');
 
-            downloadOutputBtn.disabled = false;
-            
-        } catch (err) {
-            alert('デコードに失敗しました。ファイル形式が正しくない可能性があります。');
-        } finally {
-            loadingOverlay.classList.add('hidden');
+            try {
+                const buffer = await file.arrayBuffer();
+                const canvas = i === featFiles.length - 1 ? outputCanvas : document.createElement('canvas');
+                const { width, height } = await codec.decode(buffer, canvas);
+                
+                if (i === featFiles.length - 1) {
+                    previewPlaceholder.classList.add('hidden');
+                    const btSeconds = codec.estimateTransferTime(buffer.byteLength);
+                    btTimeEl.innerText = `${btSeconds} 秒`;
+                }
+
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+                currentResults.push({ name: file.name.replace('.feat', '.jpg'), data: blob });
+                
+                updateListStatus(li, 'done', '完了');
+            } catch (err) {
+                console.error(err);
+                updateListStatus(li, 'error', 'エラー');
+            }
+        }
+        downloadOutputBtn.disabled = false;
+        downloadOutputBtn.innerText = featFiles.length > 1 ? '一括保存 (ZIP)' : '復元画像を保存';
+        isProcessing = false;
+    }
+
+    // --- Helper Functions ---
+
+    function loadImage(file) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => resolve(img);
+        });
+    }
+
+    async function renderLatent(tensor) {
+        latentCanvas.width = tensor.shape[1];
+        latentCanvas.height = tensor.shape[0];
+        await tf.browser.toPixels(tensor, latentCanvas);
+        tensor.dispose();
+    }
+
+    function updateStatsDisplay(result, img) {
+        const { originalPixels, latentPixels } = result;
+        origPixelsEl.innerText = `${originalPixels.toLocaleString()} px`;
+        latentPixelsEl.innerText = `${latentPixels.toLocaleString()} px`;
+        const keptRatio = (latentPixels / originalPixels) * 100;
+        dataKeptEl.innerText = `${keptRatio.toFixed(2)} %`;
+    }
+
+    // --- Download Handling (ZIP Support) ---
+
+    async function handleDownload(type) {
+        if (currentResults.length === 0) return;
+
+        const defaultName = type === 'encode' ? 'compressed_features' : 'reconstructed_images';
+        const zipName = prompt('ZIPファイル名を入力してください（拡張子不要）', defaultName);
+        if (!zipName) return;
+
+        if (currentResults.length === 1) {
+            const isEncode = type === 'encode';
+            const blob = isEncode ? new Blob([currentResults[0].data], { type: 'application/octet-stream' }) : currentResults[0].data;
+            saveAs(blob, currentResults[0].name);
+        } else {
+            const zip = new JSZip();
+            currentResults.forEach(res => {
+                zip.file(res.name, res.data);
+            });
+            const content = await zip.generateAsync({ type: 'blob' });
+            saveAs(content, `${zipName}.zip`);
         }
     }
 
-    // イベントリスナーの再設定
-    imageDropZone.addEventListener('drop', (e) => {
-        const file = e.dataTransfer.files[0];
-        if (file) handleImageFile(file);
-    });
+    function saveAs(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
 
-    featDropZone.addEventListener('drop', (e) => {
-        const file = e.dataTransfer.files[0];
-        if (file) handleFeatFile(file);
-    });
+    // --- Listeners ---
 
-    imageDropZone.addEventListener('click', () => triggerFileInput('image/*', handleImageFile));
-    featDropZone.addEventListener('click', () => triggerFileInput('.feat', handleFeatFile));
+    setupDropZone(imageDropZone, handleImages);
+    setupDropZone(featDropZone, handleFeats);
+
+    imageDropZone.addEventListener('click', () => triggerFileInput('image/*', handleImages));
+    featDropZone.addEventListener('click', () => triggerFileInput('.feat', handleFeats));
+
+    downloadBtn.addEventListener('click', () => handleDownload('encode'));
+    downloadOutputBtn.addEventListener('click', () => handleDownload('decode'));
 });

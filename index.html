@@ -11,6 +11,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@300;600;700&display=swap" rel="stylesheet">
     <!-- TensorFlow.js -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+    <!-- JSZip (Batch processing) -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
 <body>
     <div class="glass-background"></div>
@@ -63,6 +65,15 @@
                 <button class="btn primary-btn" id="download-feat-btn" disabled>
                     特徴量ファイルを生成
                 </button>
+
+                <!-- Batch Status Panel -->
+                <div class="batch-panel hidden" id="encoder-batch-panel">
+                    <div class="panel-header">
+                        <h3>一括処理中...</h3>
+                        <span class="count" id="encoder-count">0 / 0</span>
+                    </div>
+                    <ul class="file-list" id="encoder-file-list"></ul>
+                </div>
             </div>
 
             <!-- Pipeline Animation -->
@@ -101,6 +112,15 @@
                 <button class="btn primary-btn" id="download-output-btn" disabled>
                     復元画像を保存
                 </button>
+
+                <!-- Batch Status Panel (Decoder) -->
+                <div class="batch-panel hidden" id="decoder-batch-panel">
+                    <div class="panel-header">
+                        <h3>一括復元中...</h3>
+                        <span class="count" id="decoder-count">0 / 0</span>
+                    </div>
+                    <ul class="file-list" id="decoder-file-list"></ul>
+                </div>
             </div>
         </section>
 
