@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const imageDropZone = document.getElementById('image-drop-zone');
     const featDropZone = document.getElementById('feat-drop-zone');
     const downloadBtn = document.getElementById('download-feat-btn');
+    const downloadOutputBtn = document.getElementById('download-output-btn');
     const outputCanvas = document.getElementById('output-canvas');
     const latentCanvas = document.getElementById('latent-canvas');
     const previewPlaceholder = document.getElementById('preview-placeholder');
@@ -119,6 +120,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         URL.revokeObjectURL(url);
     });
 
+    // Download Output Image Handler
+    downloadOutputBtn.addEventListener('click', () => {
+        const quality = 0.92;
+        const dataUrl = outputCanvas.toDataURL('image/jpeg', quality);
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = 'reconstructed_' + currentFeatName.replace('.feat', '.jpg');
+        a.click();
+    });
+
     // Click to select file fallback
     const triggerFileInput = (accept, onFile) => {
         const input = document.createElement('input');
@@ -194,6 +205,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             const btSeconds = codec.estimateTransferTime(buffer.byteLength);
             btTimeEl.innerText = `${btSeconds} 秒`;
+
+            downloadOutputBtn.disabled = false;
             
         } catch (err) {
             alert('デコードに失敗しました。ファイル形式が正しくない可能性があります。');
