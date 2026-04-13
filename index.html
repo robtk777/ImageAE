@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Latent Compression - sampleImageAE</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@300;600;700&display=swap" rel="stylesheet">
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+</head>
+<body>
+    <div class="glass-background"></div>
+    
+    <main class="container">
+        <header class="header">
+            <h1 class="title">Neuro-Link <span>Compressor</span></h1>
+            <p class="subtitle">Bluetooth 4K 転送を実現する特徴量ベースの画像圧縮</p>
+        </header>
+
+        <section class="workflow-grid">
+            <!-- Step 1: Encoder -->
+            <div class="card encoder-card" id="encoder-section">
+                <div class="card-header">
+                    <span class="step-badge">1</span>
+                    <h2>Encoder</h2>
+                    <p>画像を特徴量(.feat)に変換</p>
+                </div>
+                <div class="drop-zone" id="image-drop-zone">
+                    <div class="drop-content">
+                        <div class="icon">🖼️</div>
+                        <p>画像をドラッグ＆ドロップ</p>
+                        <span class="file-info">JPG, PNG (4K対応)</span>
+                    </div>
+                </div>
+                <div class="stats" id="encoder-stats">
+                    <div class="stat-item">
+                        <label>Original Pixels</label>
+                        <span id="orig-pixels">- px</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Latent Pixels</label>
+                        <span id="latent-pixels">- px</span>
+                    </div>
+                    <div class="stat-item highlight">
+                        <label>Data Kept</label>
+                        <span id="data-kept">- %</span>
+                    </div>
+                </div>
+
+                <!-- Latent Visualization -->
+                <div class="latent-preview-container">
+                    <label>Latent Feature Map (実際に保存されるデータ)</label>
+                    <div class="latent-canvas-wrapper">
+                        <canvas id="latent-canvas"></canvas>
+                    </div>
+                    <p class="latent-hint">※この小さなモザイクデータのみが送信されます</p>
+                </div>
+
+                <button class="btn primary-btn" id="download-feat-btn" disabled>
+                    特徴量ファイルを生成
+                </button>
+            </div>
+
+            <!-- Pipeline Animation -->
+            <div class="pipeline-divider">
+                <div class="line"></div>
+                <div class="dot-pulse"></div>
+                <div class="line"></div>
+            </div>
+
+            <!-- Step 2: Decoder -->
+            <div class="card decoder-card" id="decoder-section">
+                <div class="card-header">
+                    <span class="step-badge">2</span>
+                    <h2>Decoder</h2>
+                    <p>特徴量から画像を復元</p>
+                </div>
+                <div class="drop-zone" id="feat-drop-zone">
+                    <div class="drop-content">
+                        <div class="icon">📦</div>
+                        <p>.feat ファイルをドロップ</p>
+                        <span class="file-info">特徴量バイナリデータ</span>
+                    </div>
+                </div>
+                <div class="reconstructed-preview" id="preview-container">
+                    <canvas id="output-canvas"></canvas>
+                    <div class="preview-overlay" id="preview-placeholder">
+                        <p>復元された画像がここに表示されます</p>
+                    </div>
+                </div>
+                <div class="stats" id="decoder-stats">
+                    <div class="stat-item">
+                        <label>Bluetooth Transfer</label>
+                        <span id="bt-transfer-time">- sec</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p>&copy; 2026 sampleImageAE - AI Powered Image Codec</p>
+        </footer>
+    </main>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="hidden">
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <p id="loading-text">ニューラルネットワークを初期化中...</p>
+        </div>
+    </div>
+
+    <script src="codec.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
